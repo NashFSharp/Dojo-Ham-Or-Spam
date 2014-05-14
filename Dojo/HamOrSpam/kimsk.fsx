@@ -140,21 +140,19 @@ let hamOrSpamIfContains (sample:(Class*string)[]) (token:string) =
     // TODO FIX THIS SECTION!
 
     let pHam = float(ham.Length)/float(sample.Length) 
-    printfn "%A %A %A %A" pToken pHam  (sample |> Array.map snd |> Array.filter (containsToken token) |> Seq.length |> float) (ham |> Array.map snd |> Array.filter (containsToken token) |> Seq.length |> float)
     let pHamContainsToken = 
-        (ham |> Array.map snd |> Array.filter (containsToken token) |> Seq.length |> float)/
-        (sample |> Seq.length |> float)
+        (ham |> Array.filter (fun (_,s) -> containsToken token s) |> Seq.length |> float)/
+        (ham |> Seq.length |> float)
 
     let pSpam = 1. - pHam 
     let pSpamContainsToken = 
-        (spam |> Array.map snd |> Array.filter (containsToken token) |> Seq.length |> float)/
-        (sample |> Seq.length |> float)
+        (spam |> Array.filter (fun (_,s) -> containsToken token s) |> Seq.length |> float)/
+        (spam |> Seq.length |> float)
 
     // ... and enjoy the results of your hard labor:
     // this is the application of Bayes' Theorem
     let pHamIfContainsToken = pHamContainsToken * pHam / pToken
     let pSpamIfContainsToken = pSpamContainsToken * pSpam / pToken
-    printfn "%A %A %A %A %A" pHamContainsToken pSpamContainsToken pHam pSpam pToken
     (pHamIfContainsToken, pSpamIfContainsToken)
 
 
@@ -235,6 +233,7 @@ let mostFrequent =
         |> Array.ofSeq
     printfn "Most frequent in Ham"
     topHam |> Array.iter (printfn "%s")
+    printfn ""
 
     let topSpam = 
         bagOfWords (prepare spam) tokens
@@ -245,6 +244,7 @@ let mostFrequent =
             |> Array.ofSeq
     printfn "Most frequent in Spam"
     topSpam |> Array.iter (printfn "%s")
+    printfn ""
 
 
 
@@ -275,18 +275,14 @@ let cleanTokens = (tokens, stopWords) ||> Set.difference
 let frequentHamTokens = 
     bagOfWords (prepare ham) cleanTokens
         |> Map.toSeq
-        |> Seq.sortBy (fun (_,i) -> -1*i)
-        |> Seq.take 10
-        |> Seq.map (fst)
-        |> Set.ofSeq
+        |> Seq.sortBy (fun (_,i) -> -i)        
+        |> Seq.map (fst)        
 
 let frequentSpamTokens =  
     bagOfWords (prepare spam) cleanTokens
         |> Map.toSeq
-        |> Seq.sortBy (fun (_,i) -> -1*i)
-        //|> Seq.take 500
+        |> Seq.sortBy (fun (_,i) -> -i)        
         |> Seq.map (fst)
-        |> Set.ofSeq
 
 
 (* **********************************************
@@ -300,8 +296,9 @@ to start with, let's train a classifier.
 
 // TODO: PICK TOP 10 SPAM + TOP 10 HAM "CLEAN" TOKENS,
 // AND TRAIN CLASSIFIER WITH THESE TOKENS
+let take n seq = seq |> Seq.take n |> Set.ofSeq
 
-let betterTokens = (frequentHamTokens, frequentSpamTokens) ||> Set.union
+let betterTokens = (frequentHamTokens |> take 10, frequentSpamTokens |> take 10) ||> Set.union
 // train a classifier using a sample and tokens
 let betterClassifier = classifier bagOfWords trainingSample betterTokens
 
@@ -332,7 +329,8 @@ let exampleReplacement = "Call 1800123456 for your free spam" |> replaceNumbers
 
 // TODO: PRE-PROCESS TRAINING SET AND VALIDATION SET
 // TO DEAL WITH "NUMBERS": REPLACE NUMBERS WITH __number__
-
+spam |> Array.filter (fun (_,s) -> numbersRegex.IsMatch(s)) |> Seq.length // 469
+ham |> Array.filter (fun (_,s) -> numbersRegex.IsMatch(s)) |> Seq.length // 28
 
 
 let training = trainingSample |> Array.map (fun (c,s) -> c, replaceNumbers(s)) 
@@ -358,7 +356,7 @@ validation
 
 let missSpam =
     validation
-    |> Seq.filter (fun (c,s) -> c <> (betterClassifier' s) && c = Spam)
+    |> Array.filter (fun (c,s) -> c <> (betterClassifier' s) && c = Spam)
 
 missSpam |> Seq.iter (fun (c,s) -> printfn "%A -> %A / %s" c (betterClassifier' s) s)
 
@@ -368,16 +366,23 @@ EPILOGUE...
 - HOW MUCH HAM, SPAM IS MIS-CLASSIFIED? WHAT'S WORSE?
 *)
 
-(* 
-Increase no. of spam tokens seems to get better classifier
+// The more number of tokens, the better the classifier until..
+[10;20;100;500;2500;5000]
+|> Seq.map (fun n -> n,(frequentHamTokens |> take n, frequentSpamTokens |> take n) ||> Set.union)
+|> Seq.map (fun (n,tokens) -> n, classifier bagOfWords trainingSample tokens)
+|> Seq.iter (fun (n,c) -> 
+        validationSample
+        |> Seq.averageBy (fun (cl,txt) -> if cl = c txt then 1. else 0.)
+        |> printfn "Tokens: %d Correct: %.4f" n
+    )
 
-spamTokens 
-10 9193
-20 9517
-50 9593
-150 9695
-500 9740
-* 9854
-10,__number__  9657
-*,__number__ 9854
-*)
+[10;20;100;500;2500;5000]
+|> Seq.map (fun n -> n,(frequentHamTokens |> take n, frequentSpamTokens |> take n) ||> Set.union)
+|> Seq.map (fun (n,tokens) -> n, classifier bagOfWords training (tokens.Add("__number__")))
+|> Seq.iter (fun (n,c) -> 
+        validation
+        |> Seq.averageBy (fun (cl,txt) -> if cl = c txt then 1. else 0.)
+        |> printfn "Tokens: %d Correct: %.4f" n
+    )
+
+
