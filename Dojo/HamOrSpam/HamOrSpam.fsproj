@@ -43,9 +43,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="NaiveBayes.fs" />
-    <None Include="Tutorial.fsx" />
+    <None Include="kimsk.fsx" />
     <None Include="SpamTraining" />
     <None Include="SpamValidation" />
+    <None Include="Tutorial.fsx" />
   </ItemGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
